@@ -62,6 +62,8 @@
         const [completedDrugs, setCompletedDrugs] = useState([]);
         const [shuffledOptions, setShuffledOptions] = useState([]);
         const [showConfetti, setShowConfetti] = useState(false);
+        const [score, setScore] = useState({ correct: 0, wrong: 0 });
+        const [showVictory, setShowVictory] = useState(false);
 
         const shuffleArray = (array) => {
           const shuffled = [...array];
@@ -98,16 +100,29 @@
         const handleAnswerSelect = (answer) => {
           if (showResult) return;
           setSelectedAnswer(answer);
-          const isCorrect = answer === currentDrug.antidote;
           setShowResult(true);
 
-          if (isCorrect && !completedDrugs.includes(currentDrug.index)) {
-            setCompletedDrugs((prev) => [...prev, currentDrug.index]);
+          const isCorrect = answer === currentDrug.antidote;
+
+          if (isCorrect) {
+            setScore(prev => ({ ...prev, correct: prev.correct + 1 }));
             setShowConfetti(true);
             setTimeout(() => setShowConfetti(false), 2000);
+          } else {
+            setScore(prev => ({ ...prev, wrong: prev.wrong + 1 }));
           }
 
           setTimeout(() => {
+            setCompletedDrugs(prev => {
+              // не добавляем повторно, если этот сектор уже был пройден
+              const already = prev.includes(currentDrug.index);
+              const updated = already ? prev : [...prev, currentDrug.index];
+              if (updated.length === drugPairs.length) {
+                setShowVictory(true);
+              }
+              return updated;
+            });
+
             setShowModal(false);
             setShowResult(false);
             setSelectedAnswer(null);
@@ -123,9 +138,14 @@
           setSelectedAnswer(null);
           setShowResult(false);
           setShowConfetti(false);
+          setScore({ correct: 0, wrong: 0 });
+          setShowVictory(false);
         };
 
-        const percentage = Math.round((completedDrugs.length / drugPairs.length) * 100);
+        const totalAttempts = score.correct + score.wrong;
+        const percentage = totalAttempts > 0
+          ? Math.round((score.correct / totalAttempts) * 100)
+          : 0;
 
         return (
           <div className="min-h-screen bg-gradient-to-b from-purple-900 via-indigo-900 to-black flex flex-col items-center justify-center p-4 relative overflow-hidden">
@@ -147,13 +167,15 @@
               </div>
             )}
 
-            {/* Card */}
+            {/* Основная карточка */}
             <div className="relative max-w-md w-full bg-gradient-to-b from-indigo-950/80 via-slate-950/90 to-black/90 rounded-3xl border border-indigo-500/40 shadow-[0_0_80px_rgba(129,140,248,0.6)] p-5 md:p-6 backdrop-blur-xl z-10">
               {/* Header */}
               <div className="flex items-center justify-between mb-4">
                 <div>
-                  <h1 className="text-xl md:text-2xl font-extrabold text-white tracking-tight flex items-center gap-2">
-                    <span className="w-6 h-6 flex items-center justify-center rounded-full bg-yellow-400 text-sm">🏅</span>
+                  <h1 className="text-xl md:text-2xl font-extrabold text-white drop-shadow-[0_0_20px_rgba(129,140,248,0.8)] tracking-tight flex items-center gap-2">
+                    <span className="w-6 h-6 flex items-center justify-center rounded-full bg-yellow-400 text-sm drop-shadow-[0_0_15px_rgba(250,204,21,0.9)]">
+                      🏅
+                    </span>
                     Toxicology Roulette
                   </h1>
                   <p className="text-xs md:text-sm text-indigo-100/80 mt-1">
@@ -205,6 +227,7 @@
 
               {/* Wheel */}
               <div className="relative mb-6 flex items-center justify-center">
+                {/* Pointer */}
                 <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-2 z-20">
                   <div className="w-0 h-0 border-l-[18px] border-l-transparent border-r-[18px] border-r-transparent border-t-[36px] border-t-red-600 drop-shadow-[0_0_20px_rgba(239,68,68,0.9)]" />
                 </div>
@@ -283,7 +306,7 @@
                 </div>
               </div>
 
-              {/* Button */}
+              {/* Spin button */}
               <button
                 onClick={spinWheel}
                 disabled={spinning || completedDrugs.length === drugPairs.length}
@@ -301,19 +324,140 @@
               </button>
             </div>
 
+            {/* Модалка с вопросом */}
+            {showModal && currentDrug && (
+              <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-30 animate-fadeIn">
+                <div className="bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 rounded-2xl p-6 md:p-8 max-w-md w-full shadow-2xl border border-yellow-500/40 animate-scaleIn relative overflow-hidden">
+                  <div className="absolute -top-24 -right-16 w-40 h-40 bg-yellow-500/20 rounded-full blur-3xl" />
+                  <div className="absolute -bottom-24 -left-16 w-40 h-40 bg-indigo-600/20 rounded-full blur-3xl" />
+
+                  <div className="relative text-center mb-6">
+                    <div className="inline-block bg-gradient-to-r from-yellow-400 to-amber-500 text-gray-900 px-6 py-2 rounded-full font-bold text-sm mb-4 shadow-md">
+                      Question {completedDrugs.length + 1} / {drugPairs.length}
+                    </div>
+                    <h2 className="text-2xl md:text-3xl font-bold text-white mb-2">
+                      {currentDrug.drug}
+                    </h2>
+                    <p className="text-gray-300 text-sm md:text-base">
+                      Select the correct antidote:
+                    </p>
+                  </div>
+
+                  <div className="space-y-3">
+                    {shuffledOptions.map((option, index) => {
+                      const isSelected = selectedAnswer === option;
+                      const isCorrect = option === currentDrug.antidote;
+                      const showCorrect = showResult && isCorrect;
+                      const showWrong = showResult && isSelected && !isCorrect;
+
+                      return (
+                        <button
+                          key={index}
+                          onClick={() => handleAnswerSelect(option)}
+                          disabled={showResult}
+                          className={`w-full p-4 rounded-xl font-semibold text-left transition-all duration-300 transform ${
+                            showCorrect
+                              ? 'bg-gradient-to-r from-green-600 to-green-700 text-white scale-105 shadow-lg'
+                              : showWrong
+                              ? 'bg-gradient-to-r from-red-600 to-red-700 text-white'
+                              : isSelected
+                              ? 'bg-yellow-500 text-gray-900'
+                              : 'bg-slate-800 text-white hover:bg-slate-700 hover:scale-[1.01]'
+                          } ${showResult ? 'cursor-default' : 'cursor-pointer'}`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span>{option}</span>
+                            {showCorrect && <span className="text-2xl">✓</span>}
+                            {showWrong && <span className="text-2xl">✗</span>}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {showResult && (
+                    <div
+                      className={`mt-6 p-4 rounded-xl text-center font-semibold ${
+                        selectedAnswer === currentDrug.antidote
+                          ? 'bg-green-600/20 text-green-400 border border-green-500/30'
+                          : 'bg-red-600/20 text-red-400 border border-red-500/30'
+                      }`}
+                    >
+                      {selectedAnswer === currentDrug.antidote
+                        ? '🎉 Correct!'
+                        : `❌ Wrong! Correct: ${currentDrug.antidote}`}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Victory-экран */}
+            {showVictory && (
+              <div className="fixed inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center p-4 z-40 animate-fadeIn">
+                <div className="bg-gradient-to-br from-slate-900 via-slate-950 to-black rounded-2xl p-8 max-w-md w-full shadow-2xl border-2 border-yellow-500/70 animate-scaleIn text-center relative overflow-hidden">
+                  <div className="absolute -top-24 left-1/2 -translate-x-1/2 w-48 h-48 bg-yellow-500/15 rounded-full blur-3xl" />
+                  <div className="relative">
+                    <div className="w-24 h-24 mx-auto mb-4 flex items-center justify-center text-5xl">
+                      🏆
+                    </div>
+                    <h2 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-amber-500 mb-4">
+                      Victory!
+                    </h2>
+                    <p className="text-gray-300 text-lg mb-6">
+                      You’ve completed all {drugPairs.length} drug–antidote pairs.
+                    </p>
+
+                    <div className="bg-slate-800/60 rounded-xl p-6 mb-6 border border-slate-700">
+                      <div className="text-6xl font-bold text-white mb-2">
+                        {percentage}%
+                      </div>
+                      <div className="text-gray-300 text-sm mb-4">
+                        Final score
+                      </div>
+                      <div className="flex justify-center gap-6 text-sm">
+                        <div className="text-emerald-400">
+                          ✓ {score.correct} correct
+                        </div>
+                        <div className="text-rose-400">
+                          ✗ {score.wrong} wrong
+                        </div>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={resetGame}
+                      className="bg-gradient-to-r from-yellow-400 to-amber-500 text-gray-900 px-8 py-4 rounded-full font-bold text-lg shadow-lg hover:scale-105 active:scale-95 transition-transform inline-flex items-center gap-2"
+                    >
+                      <span className="text-xl">⟳</span>
+                      Play again
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <style jsx="true">{`
               @keyframes confetti {
-                0% {
-                  transform: translateY(0) rotate(0deg);
-                  opacity: 1;
-                }
-                100% {
-                  transform: translateY(100vh) rotate(720deg);
-                  opacity: 0;
-                }
+                0% { transform: translateY(0) rotate(0deg); opacity: 1; }
+                100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
               }
               .animate-confetti {
                 animation: confetti linear forwards;
+              }
+              @keyframes fadeIn {
+                from { opacity: 0; }
+                to { opacity: 1; }
+              }
+              @keyframes scaleIn {
+                from { opacity: 0; transform: scale(0.9); }
+                to { opacity: 1; transform: scale(1); }
+              }
+              .animate-fadeIn {
+                animation: fadeIn 0.3s ease-out;
+              }
+              .animate-scaleIn {
+                animation: scaleIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
               }
             `}</style>
           </div>
